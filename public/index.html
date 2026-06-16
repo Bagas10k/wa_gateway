@@ -271,6 +271,18 @@
                         </div>
 
                         <div class="form-group">
+                            <label for="cfg-boss-number">Nomor WhatsApp Bos (Akses Tunggal)</label>
+                            <input type="text" id="cfg-boss-number" placeholder="Contoh: 628123456789">
+                            <small>Jika diisi, bot hanya akan merespon pesan dari nomor ini. Kosongkan jika ingin bot merespon siapa saja.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cfg-report-time">Waktu Kirim Laporan Terjadwal (Format HH:MM WIB)</label>
+                            <input type="text" id="cfg-report-time" placeholder="Contoh: 08:00">
+                            <small>Waktu otomatis pengiriman rekap kas & agenda harian ke nomor Bos setiap pagi.</small>
+                        </div>
+
+                        <div class="form-group">
                             <label for="cfg-system-prompt">Template Prompt Sistem (Asisten Pribadi)</label>
                             <textarea id="cfg-system-prompt" rows="8" placeholder="Template Prompt Sistem..."></textarea>
                             <small>Penting: Wajib menyertakan placeholder <code>{KNOWLEDGE_BASE_CONTENT}</code> di bagian akhir agar bot dapat memproses dokumen basis pengetahuan.</small>

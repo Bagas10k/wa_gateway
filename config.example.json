@@ -17,5 +17,7 @@
   "qwen_api_key": "",
   "qwen_model": "qwen-plus",
   "openrouter_api_key": "",
-  "openrouter_model": "meta-llama/llama-3.3-70b-instruct"
+  "openrouter_model": "meta-llama/llama-3.3-70b-instruct",
+  "boss_number": "628123456789",
+  "report_time": "08:00"
 }

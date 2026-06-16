@@ -167,7 +167,8 @@ app.post('/api/config', (req, res) => {
             groq_api_key, groq_model,
             deepseek_api_key, deepseek_model,
             qwen_api_key, qwen_model,
-            openrouter_api_key, openrouter_model
+            openrouter_api_key, openrouter_model,
+            boss_number, report_time
         } = req.body;
         
         // Update in-memory config object
@@ -197,6 +198,9 @@ app.post('/api/config', (req, res) => {
         
         if (openrouter_api_key !== undefined) config.openrouter_api_key = openrouter_api_key;
         if (openrouter_model !== undefined) config.openrouter_model = openrouter_model;
+
+        if (boss_number !== undefined) config.boss_number = boss_number;
+        if (report_time !== undefined) config.report_time = report_time;
 
         // Re-sanitize apiEndpoint
         apiEndpoint = config.api_url;
@@ -1369,6 +1373,102 @@ client.on('loading_screen', (percent, message) => {
     io.emit('whatsapp_status', { status: currentStatus });
 });
 
+// Variabel & Fungsi Scheduler Laporan Harian Otomatis
+let lastSentReportDate = '';
+
+async function sendDailyReport() {
+    try {
+        if (!config.boss_number || config.boss_number.trim() === '') {
+            console.log('[Scheduler] Nomor WhatsApp Bos belum dikonfigurasi. Laporan dibatalkan.');
+            return;
+        }
+
+        console.log('[Scheduler] Mengambil data Google Sheets untuk laporan harian...');
+        const summary = await fetchSheetsSummary(true);
+        if (!summary) {
+            console.error('[Scheduler] Gagal mengambil ringkasan Google Sheets untuk laporan.');
+            return;
+        }
+
+        const cleanBoss = config.boss_number.replace(/\D/g, '') + '@c.us';
+        
+        // Format tanggal hari ini
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' };
+        const todayStr = new Date().toLocaleDateString('id-ID', options);
+
+        let reportMsg = `💼 *LAPORAN HARIAN ASISTEN PRIBADI* 📊\n`;
+        reportMsg += `📅 *Hari/Tanggal*: ${todayStr}\n\n`;
+        
+        reportMsg += `💰 *Ringkasan Keuangan*:\n`;
+        reportMsg += `- *Saldo Kas*: Rp ${summary.saldoKas.toLocaleString('id-ID')}\n`;
+        reportMsg += `- *Total Pemasukan*: Rp ${summary.totalPemasukan.toLocaleString('id-ID')}\n`;
+        reportMsg += `- *Total Pengeluaran*: Rp ${summary.totalPengeluaran.toLocaleString('id-ID')}\n\n`;
+
+        reportMsg += `📅 *5 Agenda Terdekat*:\n`;
+        if (summary.agendaList && summary.agendaList.length > 0) {
+            const topAgendas = summary.agendaList.slice(0, 5);
+            topAgendas.forEach((agenda, idx) => {
+                reportMsg += `${idx + 1}. *${agenda.waktu}*: ${agenda.acara}\n`;
+            });
+        } else {
+            reportMsg += `_(Belum ada agenda terdaftar)_\n`;
+        }
+
+        reportMsg += `\nSemoga hari ini berjalan lancar dan penuh keberhasilan, Bos! 🚀`;
+
+        console.log(`[Scheduler] Mengirim laporan harian ke nomor Bos: ${cleanBoss}`);
+        await client.sendMessage(cleanBoss, reportMsg);
+
+        // Emit outgoing message log ke dashboard
+        io.emit('message_log', {
+            chatId: cleanBoss,
+            body: `[Laporan Terjadwal Harian] Dikirim otomatis`,
+            type: 'outgoing',
+            timestamp: Date.now()
+        });
+
+    } catch (err) {
+        console.error('[Scheduler] Gagal mengirim laporan harian:', err.message);
+    }
+}
+
+function startDailyReportScheduler() {
+    console.log('[Scheduler] Memulai scheduler laporan harian otomatis...');
+    setInterval(async () => {
+        if (currentStatus !== 'CONNECTED') return;
+
+        const now = new Date();
+        // Dapatkan string waktu WIB format "HH:MM"
+        const parts = now.toLocaleTimeString('en-US', {
+            timeZone: 'Asia/Jakarta',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+        }).split(':');
+        
+        if (parts.length < 2) return;
+        const hh = parts[0].padStart(2, '0');
+        const mm = parts[1].padStart(2, '0');
+        const timeStr = `${hh}:${mm}`;
+
+        // Dapatkan string tanggal WIB format "YYYY-MM-DD"
+        const dateStr = now.toLocaleDateString('en-US', {
+            timeZone: 'Asia/Jakarta',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+
+        const targetTime = config.report_time || '08:00';
+
+        if (timeStr === targetTime && lastSentReportDate !== dateStr) {
+            console.log(`[Scheduler] Waktu cocok (${timeStr}), mengirim laporan harian...`);
+            lastSentReportDate = dateStr;
+            await sendDailyReport();
+        }
+    }, 30000); // Cek setiap 30 detik
+}
+
 // Event Handler Client Siap
 client.on('ready', () => {
     console.log('\n======================================================');
@@ -1377,6 +1477,9 @@ client.on('ready', () => {
     currentStatus = 'CONNECTED';
     currentQrCode = null;
     io.emit('whatsapp_status', { status: currentStatus });
+    
+    // Mulai scheduler
+    startDailyReportScheduler();
 });
 
 client.on('disconnected', (reason) => {
@@ -1393,6 +1496,22 @@ client.on('message', async (msg) => {
 
     // Filter: Abaikan pesan grup atau siaran status
     if (msg.isGroupMsg || chatId.includes('@g.us') || chatId === 'status@broadcast') return;
+
+    // Keamanan Akses (Hanya Bos)
+    if (config.boss_number && config.boss_number.trim() !== '') {
+        const cleanBoss = config.boss_number.replace(/\D/g, '');
+        const cleanSender = chatId.split('@')[0].replace(/\D/g, '');
+        if (cleanSender !== cleanBoss) {
+            console.log(`[Akses Ditolak] Pesan dari ${chatId} diabaikan karena bukan nomor Bos (${config.boss_number}).`);
+            io.emit('message_log', {
+                chatId,
+                body: `⚠️ Akses Ditolak: ${userMessage || '[Media/Berkas]'}`,
+                type: 'incoming',
+                timestamp: Date.now()
+            });
+            return;
+        }
+    }
 
     // --- MEKANISME PROCESSING LOCK (ANTI OVERLOAD RAM) ---
     if (activeLocks.has(chatId)) {

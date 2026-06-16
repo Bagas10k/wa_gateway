@@ -26,6 +26,8 @@ const cfgModelName = document.getElementById('cfg-model-name');
 const cfgMaxTokens = document.getElementById('cfg-max-tokens');
 const cfgApiKey = document.getElementById('cfg-api-key');
 const cfgSheetsUrl = document.getElementById('cfg-sheets-url');
+const cfgBossNumber = document.getElementById('cfg-boss-number');
+const cfgReportTime = document.getElementById('cfg-report-time');
 const cfgSystemPrompt = document.getElementById('cfg-system-prompt');
 const cfgAiMemory = document.getElementById('cfg-ai-memory');
 
@@ -370,6 +372,8 @@ async function loadConfig() {
         
         cfgMaxTokens.value = config.max_tokens || 1000;
         cfgSheetsUrl.value = config.google_sheets_url || '';
+        cfgBossNumber.value = config.boss_number || '';
+        cfgReportTime.value = config.report_time || '08:00';
         cfgSystemPrompt.value = config.system_prompt_template || '';
         
         // Update header badge with current provider name and model
@@ -423,6 +427,8 @@ function setupConfigHandler() {
             model_name: activeModel,
             max_tokens: parseInt(cfgMaxTokens.value, 10),
             google_sheets_url: cfgSheetsUrl.value.trim(),
+            boss_number: cfgBossNumber.value.trim(),
+            report_time: cfgReportTime.value.trim(),
             system_prompt_template: cfgSystemPrompt.value.trim(),
             
             // Sertakan key & model provider lainnya agar tidak terhapus
