@@ -14,6 +14,7 @@ const pdfParse = require('pdf-parse');
 const CONFIG_FILE = './config.json';
 const SESSION_DB_FILE = './chat_sessions.json';
 const HISTORY_LOG_FILE = './log_history.json';
+const REMINDERS_FILE = './reminders.json';
 
 // Pastikan file config ada sebelum memulai aplikasi
 if (!fs.existsSync(CONFIG_FILE)) {
@@ -57,6 +58,117 @@ function saveHistory() {
     } catch (err) {
         console.error('Gagal menyimpan database riwayat transaksi:', err.message);
     }
+}
+
+// System Pengingat (Reminder) Setup
+let reminders = [];
+
+function loadReminders() {
+    try {
+        if (fs.existsSync(REMINDERS_FILE)) {
+            reminders = JSON.parse(fs.readFileSync(REMINDERS_FILE, 'utf-8'));
+            console.log(`Berhasil memuat ${reminders.length} pengingat.`);
+        } else {
+            reminders = [];
+            fs.writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2), 'utf-8');
+            console.log('Database pengingat baru diinisialisasi.');
+        }
+    } catch (err) {
+        console.error('Gagal memuat berkas pengingat:', err.message);
+        reminders = [];
+    }
+}
+
+function saveReminders() {
+    try {
+        fs.writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2), 'utf-8');
+    } catch (err) {
+        console.error('Gagal menyimpan berkas pengingat:', err.message);
+    }
+}
+
+function parseReminderTime(timeStr) {
+    const now = new Date();
+    const wibOffset = 7 * 60 * 60 * 1000;
+    const nowUtc = now.getTime() + now.getTimezoneOffset() * 60 * 1000;
+    const nowWib = new Date(nowUtc + wibOffset);
+
+    let targetDate = new Date(nowWib);
+    const cleanStr = timeStr.toLowerCase().trim();
+
+    // Ekstrak HH:MM atau HH.MM
+    const timeMatch = cleanStr.match(/([01]\d|2[0-3])[:.]([0-5]\d)/);
+    if (!timeMatch) return null;
+
+    const hh = parseInt(timeMatch[1], 10);
+    const mm = parseInt(timeMatch[2], 10);
+
+    targetDate.setHours(hh, mm, 0, 0);
+
+    if (cleanStr.includes('besok')) {
+        targetDate.setDate(targetDate.getDate() + 1);
+    } else if (cleanStr.includes('lusa')) {
+        targetDate.setDate(targetDate.getDate() + 2);
+    } else {
+        const dateMatch = cleanStr.match(/(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{4}))?/);
+        if (dateMatch) {
+            const day = parseInt(dateMatch[1], 10);
+            const month = parseInt(dateMatch[2], 10) - 1;
+            const year = dateMatch[3] ? parseInt(dateMatch[3], 10) : targetDate.getFullYear();
+            
+            targetDate.setDate(day);
+            targetDate.setMonth(month);
+            targetDate.setFullYear(year);
+        } else {
+            if (targetDate.getTime() <= nowWib.getTime()) {
+                targetDate.setDate(targetDate.getDate() + 1);
+            }
+        }
+    }
+
+    const diff = targetDate.getTime() - nowWib.getTime();
+    return new Date(now.getTime() + diff);
+}
+
+function startReminderScheduler() {
+    console.log('[Scheduler] Memulai scheduler pengingat otomatis...');
+    setInterval(async () => {
+        if (currentStatus !== 'CONNECTED') return;
+
+        const now = new Date();
+        let updated = false;
+
+        for (let reminder of reminders) {
+            if (!reminder.sent) {
+                const reminderTime = new Date(reminder.time);
+                if (now.getTime() >= reminderTime.getTime()) {
+                    console.log(`[Reminder] Mengirim pengingat: "${reminder.message}" ke nomor Bos...`);
+                    try {
+                        const bossChatId = config.boss_number.replace(/\D/g, '') + '@c.us';
+                        const reminderMsg = `🔔 *PENGINGAT ASISTEN PRIBADI* 🔔\n\nHalo Bos! Saya di sini untuk mengingatkan Bos:\n👉 *${reminder.message}*`;
+                        
+                        await client.sendMessage(bossChatId, reminderMsg);
+                        reminder.sent = true;
+                        updated = true;
+
+                        io.emit('message_log', {
+                            chatId: bossChatId,
+                            body: `🔔 [Pengingat Terkirim] ${reminder.message}`,
+                            type: 'outgoing',
+                            timestamp: Date.now()
+                        });
+                    } catch (err) {
+                        console.error('[Reminder] Gagal mengirim pengingat:', err.message);
+                    }
+                }
+            }
+        }
+
+        if (updated) {
+            reminders = reminders.filter(r => !r.sent);
+            saveReminders();
+        }
+    }, 30000);
 }
 
 function addHistoryLog(type, entry) {
@@ -1177,8 +1289,9 @@ ${summary.agendaList && summary.agendaList.length > 0
     systemPrompt += `\n\n[INSTRUKSI KLASIFIKASI & FORMAT OUTPUT JSON UTAMA (WAJIB DIPATUHI)]
 Tugas utama Anda saat ini adalah menganalisis pesan terbaru dari Bos dan mendeteksi tujuannya (intent):
 1. finance: Mencatat pemasukan atau pengeluaran uang (misalnya: belanja, gaji, bayar tagihan, dll).
-2. agenda: Mencatat agenda, jadwal, janji, rapat, pengingat, atau tugas (todos).
-3. chat: Obrolan umum, pertanyaan, diskusi, basa-basi, atau permintaan lainnya.
+2. reminder: Permintaan dari Bos untuk diingatkan tentang sesuatu pada waktu tertentu (misalnya: "ingatkan saya nanti jam 15:30 untuk jemput anak", "tolong ingatkan besok jam 9 buat laporan").
+3. agenda: Mencatat agenda, jadwal, janji, rapat, atau tugas (todos) ke spreadsheet tanpa memerlukan pengingat waktu real-time.
+4. chat: Obrolan umum, pertanyaan, diskusi, basa-basi, atau permintaan lainnya.
 
 Keluaran Anda HARUS selalu berupa format JSON bersih sesuai dengan salah satu struktur di bawah ini (JANGAN mengeluarkan teks lain di luar JSON):
 
@@ -1192,11 +1305,20 @@ Jika intent adalah "finance":
   }
 }
 
+Jika intent adalah "reminder":
+{
+  "intent": "reminder",
+  "data": {
+    "waktu": "<keterangan waktu pengingat dalam bahasa Indonesia, misal: besok 09:00 atau nanti 15:30 atau 18/06 jam 10:00>",
+    "pesan": "<pesan yang ingin diingatkan kepada Bos, max 10 kata>"
+  }
+}
+
 Jika intent adalah "agenda":
 {
   "intent": "agenda",
   "data": {
-    "waktu": "<waktu/tanggal acara atau pengingat yang dimaksud, gunakan informasi waktu saat ini sebagai acuan>",
+    "waktu": "<waktu/tanggal acara yang dimaksud, gunakan informasi waktu saat ini sebagai acuan>",
     "acara": "<nama acara/kegiatan/tugas, max 5 kata>"
   }
 }
@@ -1218,7 +1340,7 @@ Kenali singkatan nominal uang:
 - Abaikan angka total saldo/pengeluaran/pemasukan yang ada di riwayat percakapan sebelumnya jika nilainya berbeda dengan data real-time saat ini. Data real-time saat ini di atas adalah kebenaran mutlak.
 
 [PANDUAN KEPRIBADIAN & BAHASA]
-JANGAN menuliskan proses berpikir (thinking/reasoning process) atau menggunakan tag <think>. Jawab secara langsung dalam format JSON di atas.`;
+JANGAN menuliskan proses berpikir (thinking/reasoning process) or menggunakan tag <think>. Jawab secara langsung dalam format JSON di atas.`;
 
     // Penegasan instruksi memori sebagai Undang-Undang Tertinggi AI (Konstitusi Bot)
     if (memoryContent.trim()) {
@@ -1342,6 +1464,7 @@ function appendToMemory(text) {
 // Inisialisasi Database
 loadHistory();
 loadSessions();
+loadReminders();
 
 // Socket.io Connection Logic
 io.on('connection', (socket) => {
@@ -1480,6 +1603,7 @@ client.on('ready', () => {
     
     // Mulai scheduler
     startDailyReportScheduler();
+    startReminderScheduler();
 });
 
 client.on('disconnected', (reason) => {
@@ -1675,6 +1799,7 @@ client.on('message', async (msg) => {
         userMessage.toLowerCase().startsWith('#agenda') || 
         userMessage.toLowerCase().startsWith('#akubosmu') || 
         userMessage.toLowerCase().startsWith('#jadwallaporan') ||
+        userMessage.toLowerCase().startsWith('#ingatkan') ||
         userMessage === '!reload' ||
         ['help', 'bantuan', 'menu', '#bantuan', '/help'].includes(userMessage.toLowerCase().trim());
 
@@ -1847,6 +1972,71 @@ client.on('message', async (msg) => {
         return;
     }
 
+    // 3.5.7. PENANGANAN PINTASAN PENGINGAT (#ingatkan)
+    if (userMessage.toLowerCase().startsWith('#ingatkan')) {
+        const content = userMessage.substring('#ingatkan'.length).trim();
+        let timePart = '';
+        let messagePart = '';
+
+        const parts = content.split('|');
+        if (parts.length >= 2) {
+            timePart = parts[0].trim();
+            messagePart = parts.slice(1).join('|').trim();
+        } else {
+            await msg.reply('❌ Format salah Bos. Gunakan format: *#ingatkan [waktu] | [keterangan]*\nContoh: *#ingatkan jam 15:30 | Telepon Klien*');
+            return;
+        }
+
+        const targetDate = parseReminderTime(timePart);
+        if (!targetDate) {
+            await msg.reply('❌ Gagal membaca format waktu Bos. Contoh waktu yang didukung:\n- *15:30* (hari ini)\n- *besok 09:00*\n- *lusa 10:00*\n- *20/06 jam 14:00*');
+            return;
+        }
+
+        activeLocks.add(chatId);
+        const chat = await msg.getChat();
+        await chat.sendStateTyping();
+
+        try {
+            const newReminder = {
+                id: Date.now().toString(),
+                chatId: chatId,
+                time: targetDate.toISOString(),
+                message: messagePart,
+                sent: false
+            };
+
+            reminders.push(newReminder);
+            saveReminders();
+
+            const formattedTime = targetDate.toLocaleString('id-ID', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Jakarta'
+            }) + ' WIB';
+
+            const replyMsg = `✅ Pengingat berhasil dijadwalkan, Bos!\n\n🔔 *Detail Pengingat*:\n- *Pengingat*: ${messagePart}\n- *Waktu*: ${formattedTime}\n\nSaya akan mengirim pesan WhatsApp kepada Bos secara otomatis pada waktu tersebut.`;
+            await msg.reply(replyMsg);
+
+            io.emit('message_log', {
+                chatId,
+                body: `Menjadwalkan Pengingat: "${messagePart}" untuk ${formattedTime}`,
+                type: 'outgoing',
+                timestamp: Date.now()
+            });
+        } catch (err) {
+            console.error('Gagal menambahkan pengingat:', err.message);
+            await msg.reply(`❌ Gagal menambahkan pengingat: ${err.message}`);
+        } finally {
+            activeLocks.delete(chatId);
+        }
+        return;
+    }
+
     // 3.6. MANUAL BANTUAN / PETUNJUK PENGGUNAAN
     const helpKeywords = ['help', 'bantuan', 'menu', '#bantuan', '/help'];
     if (helpKeywords.includes(userMessage.toLowerCase().trim())) {
@@ -1884,7 +2074,12 @@ Ketik obrolan seperti biasa, AI akan mendeteksi otomatis!
 👉 *Mengatur Jadwal Laporan*:
 - Format: \`#jadwallaporan [HH:MM]\`
 - Contoh: \`#jadwallaporan 20:00\`
-(Untuk mengatur waktu pengiriman laporan harian otomatis kapan saja)`;
+(Untuk mengatur waktu pengiriman laporan harian otomatis kapan saja)
+
+👉 *Pintasan Buat Pengingat*:
+- Format: \`#ingatkan [waktu] | [keterangan]\`
+- Contoh: \`#ingatkan besok jam 09:00 | Bayar gaji karyawan\`
+(Untuk membuat pengingat WhatsApp otomatis kapan saja)`;
 
         await msg.reply(helpMsg);
         
@@ -2079,6 +2274,52 @@ Ketik obrolan seperti biasa, AI akan mendeteksi otomatis!
                 timestamp: Date.now()
             });
         } 
+        else if (result.intent === 'reminder' && result.data && result.data.waktu && result.data.pesan) {
+            const data = result.data;
+            const targetDate = parseReminderTime(data.waktu);
+            if (targetDate) {
+                const newReminder = {
+                    id: Date.now().toString(),
+                    chatId: chatId,
+                    time: targetDate.toISOString(),
+                    message: data.pesan,
+                    sent: false
+                };
+
+                reminders.push(newReminder);
+                saveReminders();
+
+                const formattedTime = targetDate.toLocaleString('id-ID', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Asia/Jakarta'
+                }) + ' WIB';
+
+                const replyMsg = `🤖 *Pengingat Dijadwalkan Otomatis*:\n- *Pengingat*: ${data.pesan}\n- *Waktu*: ${formattedTime}\n\nSaya akan mengirimkan pesan pengingat kepada Bos pada waktu tersebut.`;
+                await msg.reply(replyMsg);
+
+                io.emit('message_log', {
+                    chatId,
+                    body: `Menjadwalkan Pengingat (AI): "${data.pesan}" untuk ${formattedTime}`,
+                    type: 'outgoing',
+                    timestamp: Date.now()
+                });
+            } else {
+                const aiReply = result.reply || `Saya mengerti Bos ingin diingatkan tentang "${data.pesan}" pada "${data.waktu}". Namun saya gagal mengurai format waktunya. Harap gunakan format yang lebih spesifik seperti *besok jam 10:00* atau *15:30*.`;
+                await msg.reply(aiReply);
+                
+                io.emit('message_log', {
+                    chatId,
+                    body: aiReply,
+                    type: 'outgoing',
+                    timestamp: Date.now()
+                });
+            }
+        }
         else {
             // Jika intent adalah 'chat' (obrolan umum)
             console.log(`[AI Chat] Memproses balasan obrolan umum untuk: "${userMessage}"`);
