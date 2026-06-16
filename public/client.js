@@ -66,7 +66,33 @@ document.addEventListener('DOMContentLoaded', () => {
     loadHistoryLog();
     setupUploadHandlers();
     setupConfigHandler();
+    
+    // Sync theme selector from localStorage
+    const savedTheme = localStorage.getItem('dashboard-theme') || 'ios-dark';
+    const selector = document.getElementById('cfg-theme-selector');
+    if (selector) {
+        selector.value = savedTheme;
+    }
 });
+
+// Change Theme Handler
+window.changeTheme = function() {
+    const selector = document.getElementById('cfg-theme-selector');
+    if (!selector) return;
+    
+    const theme = selector.value;
+    
+    // Hapus semua tema lama dari documentElement
+    document.documentElement.classList.remove('theme-ios-light', 'theme-minimal-dark', 'theme-minimal-light');
+    
+    // Tambahkan tema baru jika bukan default (ios-dark)
+    if (theme !== 'ios-dark') {
+        document.documentElement.classList.add('theme-' + theme.replace('theme-', ''));
+    }
+    
+    // Simpan ke localStorage
+    localStorage.setItem('dashboard-theme', theme);
+};
 
 // Switch Tab Navigation
 window.switchTab = function(tabId) {

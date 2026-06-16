@@ -10,6 +10,15 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
     <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Script untuk memuat tema tersimpan (mencegah kedipan layout) -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('dashboard-theme') || 'ios-dark';
+            if (savedTheme !== 'ios-dark') {
+                document.documentElement.className = 'theme-' + savedTheme.replace('theme-', '');
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="app-container">
@@ -290,6 +299,26 @@
 
                         <button type="submit" class="btn btn-primary btn-block">Simpan Konfigurasi</button>
                     </form>
+                </section>
+
+                <!-- PANEL KANAN: THEME & DISPLAY SETTINGS -->
+                <section class="panel panel-right card">
+                    <h2>
+                        <i data-lucide="palette"></i>
+                        <span>Tampilan & Tema</span>
+                    </h2>
+                    <p class="card-subtitle">Sesuaikan visualisasi dashboard asisten pribadi Anda (sederhana, bersih, dan lega)</p>
+                    
+                    <div class="form-group">
+                        <label for="cfg-theme-selector">Pilih Tema Dashboard</label>
+                        <select id="cfg-theme-selector" onchange="changeTheme()">
+                            <option value="ios-dark">iOS Dark Mode (Bawaan)</option>
+                            <option value="ios-light">iOS Light Mode (Putih Bersih)</option>
+                            <option value="minimal-dark">Minimalist Dark (Gelap Lega & Bersih)</option>
+                            <option value="minimal-light">Minimalist Light (Terang Lega & Bersih)</option>
+                        </select>
+                        <small>Pilihan tema langsung diterapkan secara instan dan disimpan ke browser Anda.</small>
+                    </div>
                 </section>
             </main>
         </div>
