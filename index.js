@@ -1674,6 +1674,7 @@ client.on('message', async (msg) => {
         userMessage.toLowerCase().startsWith('keluar') || 
         userMessage.toLowerCase().startsWith('#agenda') || 
         userMessage.toLowerCase().startsWith('#akubosmu') || 
+        userMessage.toLowerCase().startsWith('#jadwallaporan') ||
         userMessage === '!reload' ||
         ['help', 'bantuan', 'menu', '#bantuan', '/help'].includes(userMessage.toLowerCase().trim());
 
@@ -1810,6 +1811,42 @@ client.on('message', async (msg) => {
         return;
     }
 
+    // 3.5.5. UBAH JADWAL LAPORAN HARIAN (#jadwallaporan)
+    if (userMessage.toLowerCase().startsWith('#jadwallaporan')) {
+        const timeInput = userMessage.substring('#jadwallaporan'.length).trim();
+        const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+        
+        if (!timeRegex.test(timeInput)) {
+            await msg.reply('❌ Format waktu salah Bos. Harap gunakan format HH:MM (24 jam). Contoh: *#jadwallaporan 17:00*');
+            return;
+        }
+
+        activeLocks.add(chatId);
+        const chat = await msg.getChat();
+        await chat.sendStateTyping();
+        
+        try {
+            config.report_time = timeInput;
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+            
+            const replyMsg = `✅ Jadwal laporan harian berhasil diubah, Bos!\n\n🕒 *Waktu Baru*: *${timeInput} WIB*\n\nLaporan berikutnya akan dikirim otomatis setiap hari pada jam tersebut.`;
+            await msg.reply(replyMsg);
+            
+            io.emit('message_log', {
+                chatId,
+                body: `Jadwal laporan diubah ke ${timeInput} WIB`,
+                type: 'outgoing',
+                timestamp: Date.now()
+            });
+        } catch (err) {
+            console.error('Gagal memperbarui jadwal laporan via WA:', err.message);
+            await msg.reply(`❌ Gagal memperbarui jadwal: ${err.message}`);
+        } finally {
+            activeLocks.delete(chatId);
+        }
+        return;
+    }
+
     // 3.6. MANUAL BANTUAN / PETUNJUK PENGGUNAAN
     const helpKeywords = ['help', 'bantuan', 'menu', '#bantuan', '/help'];
     if (helpKeywords.includes(userMessage.toLowerCase().trim())) {
@@ -1842,7 +1879,12 @@ Ketik obrolan seperti biasa, AI akan mendeteksi otomatis!
 👉 *Trigger Memori*:
 - Format: \`#akubosmu [informasi]\`
 - Contoh: \`#akubosmu Sandi wifi kantor adalah "admin123"\`
-(Saya akan mengingat fakta ini untuk menjawab pertanyaan Anda nantinya)`;
+(Saya akan mengingat fakta ini untuk menjawab pertanyaan Anda nantinya)
+
+👉 *Mengatur Jadwal Laporan*:
+- Format: \`#jadwallaporan [HH:MM]\`
+- Contoh: \`#jadwallaporan 20:00\`
+(Untuk mengatur waktu pengiriman laporan harian otomatis kapan saja)`;
 
         await msg.reply(helpMsg);
         
