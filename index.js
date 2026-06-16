@@ -142,17 +142,28 @@ function startReminderScheduler() {
             if (!reminder.sent) {
                 const reminderTime = new Date(reminder.time);
                 if (now.getTime() >= reminderTime.getTime()) {
-                    console.log(`[Reminder] Mengirim pengingat: "${reminder.message}" ke nomor Bos...`);
+                    console.log(`[Reminder] Mengirim pengingat: "${reminder.message}"...`);
                     try {
-                        const bossChatId = config.boss_number.replace(/\D/g, '') + '@c.us';
+                        // Gunakan chatId pembuat pengingat, atau fallback ke nomor Bos jika kosong
+                        let targetChatId = reminder.chatId;
+                        if (!targetChatId || targetChatId.trim() === '' || targetChatId === '@c.us') {
+                            if (config.boss_number && config.boss_number.trim() !== '') {
+                                targetChatId = config.boss_number.replace(/\D/g, '') + '@c.us';
+                            }
+                        }
+
+                        if (!targetChatId || targetChatId === '@c.us') {
+                            throw new Error('Nomor tujuan pengingat (chatId / boss_number) tidak valid atau kosong.');
+                        }
+
                         const reminderMsg = `🔔 *PENGINGAT ASISTEN PRIBADI* 🔔\n\nHalo Bos! Saya di sini untuk mengingatkan Bos:\n👉 *${reminder.message}*`;
                         
-                        await client.sendMessage(bossChatId, reminderMsg);
+                        await client.sendMessage(targetChatId, reminderMsg);
                         reminder.sent = true;
                         updated = true;
 
                         io.emit('message_log', {
-                            chatId: bossChatId,
+                            chatId: targetChatId,
                             body: `🔔 [Pengingat Terkirim] ${reminder.message}`,
                             type: 'outgoing',
                             timestamp: Date.now()
