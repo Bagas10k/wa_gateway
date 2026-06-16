@@ -1,0 +1,10 @@
+node_modules/
+.wwebjs_cache/
+session/
+session_backup/
+chat_sessions.json
+log_history.json
+config.json
+scratch/
+.env
+*.log

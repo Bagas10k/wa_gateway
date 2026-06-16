@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Asisten Manager Pribadi Bot</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=3">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- HEADER (iOS Style Top Bar) -->
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="logo-icon"><i data-lucide="bot"></i></span>
+                <div class="logo-text">
+                    <h1>WhatsApp Bot CS</h1>
+                    <p>Asisten Manager Pribadi Engine</p>
+                </div>
+            </div>
+            
+            <div class="header-right">
+                <button type="button" class="header-action-btn" onclick="refreshQRCode(false)" title="Muat Ulang WhatsApp Client">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+                <div class="server-info">
+                    <span class="server-badge model-name" id="badge-model-name">Loading model...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- TAB CONTENT 1: MONITOR & LOG CATATAN -->
+        <div id="tab-monitor" class="tab-content">
+            <main class="dashboard-grid">
+                <!-- PANEL KIRI: STATUS & RIWAYAT CATATAN -->
+                <section class="panel panel-left">
+                    <!-- STATUS KONEKSI -->
+                    <!-- STATUS KONEKSI -->
+                    <div class="card status-card">
+                        <h2>Status Koneksi Bot</h2>
+                        <div class="status-indicator-wrapper">
+                            <div id="status-dot" class="status-dot disconnected"></div>
+                            <span id="status-text" class="status-label">Terputus</span>
+                        </div>
+                        
+                        <div id="qr-container" class="qr-container hidden">
+                            <p class="qr-instruction">Pindai QR Code ini menggunakan aplikasi WhatsApp Anda (Perangkat Tertaut):</p>
+                            <div id="qr-code-placeholder" class="qr-placeholder">
+                                <span class="loader"></span>
+                                <p>Sedang memuat QR Code...</p>
+                            </div>
+                            <div class="qr-actions" style="margin-top: 14px; display: flex; gap: 8px; justify-content: center; width: 100%;">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="refreshQRCode(false)">Refresh QR</button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="refreshQRCode(true)">Reset Sesi</button>
+                            </div>
+                        </div>
+                        
+                        <div id="active-session-info" class="session-info hidden">
+                            <p class="session-success-msg">✓ Bot berhasil terhubung ke WhatsApp dan siap membalas.</p>
+                            <button type="button" class="btn btn-danger btn-sm" style="margin-top: 10px;" onclick="refreshQRCode(true)">Tautkan Ulang / Logout</button>
+                        </div>
+                    </div>
+
+                    <!-- RIWAYAT KEUANGAN TERAKHIR -->
+                    <div class="card history-card">
+                        <h2>Catatan Keuangan Terakhir</h2>
+                        <p class="card-subtitle">Riwayat kas masuk/keluar yang dicatat bot secara lokal</p>
+                        <div id="history-finance-list" class="wa-chat-list">
+                            <div class="file-item-placeholder">Memuat riwayat keuangan...</div>
+                        </div>
+                    </div>
+
+                    <!-- RIWAYAT AGENDA TERAKHIR -->
+                    <div class="card history-card">
+                        <h2>Agenda Terjadwal Terakhir</h2>
+                        <p class="card-subtitle">Riwayat agenda/kegiatan yang dijadwalkan secara lokal</p>
+                        <div id="history-agenda-list" class="wa-chat-list">
+                            <div class="file-item-placeholder">Memuat riwayat agenda...</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PANEL KANAN: LIVE MONITOR -->
+                <section class="panel panel-right card monitor-card">
+                    <div class="monitor-header">
+                        <h2>Monitor Obrolan Langsung</h2>
+                        <span class="badge pulse-badge">Live Feed</span>
+                    </div>
+                    <div id="chat-messages" class="chat-messages-container">
+                        <div class="chat-placeholder">
+                            <p>Belum ada log percakapan aktif.</p>
+                            <span class="small-text">Pesan masuk dan keluar akan muncul di sini secara real-time.</span>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <!-- TAB CONTENT 2: MEMORI & BERKAS KNOWLEDGE -->
+        <div id="tab-memory" class="tab-content hidden">
+            <main class="dashboard-grid">
+                <!-- PANEL KIRI: MEMORI & KNOWLEDGE -->
+                <section class="panel panel-left">
+                    <!-- MEMORI / UNDANG-UNDANG UTAMA AI -->
+                    <div class="card memory-card">
+                        <h2>Undang-Undang Utama AI (Konstitusi Bot) <i data-lucide="scroll"></i></h2>
+                        <p class="card-subtitle">Aturan hukum tertinggi bagi AI yang ditulis langsung oleh Bos (Trigger via chat: #akubosmu)</p>
+                        
+                        <div class="form-group">
+                            <textarea id="cfg-ai-memory" rows="6" placeholder="Undang-undang AI masih kosong..."></textarea>
+                            <small>Undang-undang ini disimpan dalam berkas <code>00_memori_otomatis.txt</code> dan memiliki prioritas mutlak yang meng-override panduan kepribadian default bot.</small>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; margin-top: 12px;">
+                            <button id="btn-save-memory" class="btn btn-primary btn-sm" onclick="saveAiMemory()">Simpan Undang-Undang</button>
+                            <button id="btn-clear-memory" class="btn btn-danger btn-sm" onclick="clearAiMemory()">Kosongkan</button>
+                        </div>
+                    </div>
+
+                    <!-- KNOWLEDGE BASE -->
+                    <div class="card knowledge-card">
+                        <div class="card-header-btn">
+                            <h2>Basis Pengetahuan (.txt)</h2>
+                            <label for="knowledge-upload" class="btn btn-primary btn-sm">Unggah File</label>
+                            <input type="file" id="knowledge-upload" accept=".txt" style="display: none;">
+                        </div>
+                        <p class="card-subtitle">Dokumen lokal untuk injeksi konteks AI asisten</p>
+                        <div id="knowledge-list" class="file-list">
+                            <div class="file-item-placeholder">Memuat berkas...</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PANEL KANAN: MEDIA ASSETS -->
+                <section class="panel panel-right">
+                    <div class="card media-card">
+                        <div class="card-header-btn">
+                            <h2>Aset Media (.pdf, .png)</h2>
+                            <label for="media-upload" class="btn btn-primary btn-sm">Unggah File</label>
+                            <input type="file" id="media-upload" accept=".pdf,.png" style="display: none;">
+                        </div>
+                        <p class="card-subtitle">Berkas media dikirim AI lewat tag <code>[KIRIM_MEDIA: nama_file]</code></p>
+                        <div id="media-list" class="file-list">
+                            <div class="file-item-placeholder">Memuat berkas...</div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <!-- TAB CONTENT 3: BOT CONFIGURATION -->
+        <div id="tab-settings" class="tab-content hidden">
+            <main class="dashboard-grid settings-grid">
+                <!-- PANEL KIRI: BOT CONFIGURATION FORM -->
+                <section class="panel panel-left card form-card">
+                    <h2>Pengaturan Konfigurasi Bot</h2>
+                    <p class="card-subtitle">Sesuaikan penyedia AI dan parameter asisten Anda di bawah ini</p>
+                    
+                    <form id="config-form" class="settings-form">
+                        <div class="form-group">
+                            <label for="cfg-provider">Penyedia AI (AI Provider)</label>
+                            <select id="cfg-provider" onchange="toggleProviderFields()">
+                                <option value="gemini">Google Gemini API</option>
+                                <option value="local">LM Studio (Lokal)</option>
+                                <option value="groq">Groq API</option>
+                                <option value="deepseek">DeepSeek API</option>
+                                <option value="qwen">Alibaba DashScope (Qwen)</option>
+                                <option value="openrouter">OpenRouter (Llama/Qwen/dll)</option>
+                            </select>
+                        </div>
+
+                        <!-- Gemini Settings Group -->
+                        <div id="group-gemini-settings">
+                            <div class="form-group">
+                                <label for="cfg-gemini-api-keys">Stok Gemini API Keys (Satu Key Per Baris)</label>
+                                <textarea id="cfg-gemini-api-keys" rows="5" placeholder="Masukkan Google Gemini API Keys Anda (satu per baris)..."></textarea>
+                                <small>Masukkan satu atau beberapa API Key Gemini (satu per baris). Bot akan melakukan rotasi (round-robin) dan otomatis beralih jika ada key yang limit/bermasalah.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-gemini-model">Model Gemini</label>
+                                <input type="text" id="cfg-gemini-model" placeholder="gemini-2.5-flash">
+                                <small>Rekomendasi: <code>gemini-2.5-flash</code> (sangat cepat & responsif)</small>
+                            </div>
+                        </div>
+
+                        <!-- LM Studio Settings Group -->
+                        <div id="group-local-settings" class="hidden">
+                            <div class="form-group">
+                                <label for="cfg-api-url">URL API Local Server</label>
+                                <input type="text" id="cfg-api-url" placeholder="http://localhost:1234/v1/chat/completions">
+                                <small>Saran default: http://localhost:1234/v1/chat/completions</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="cfg-model-name">Nama Model (Sesuai di LM Studio)</label>
+                                <input type="text" id="cfg-model-name" placeholder="qwen3.5-9b">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="cfg-api-key">API Key / Token LM Studio (Opsional)</label>
+                                <input type="password" id="cfg-api-key" placeholder="Masukkan token jika autentikasi LM Studio aktif">
+                            </div>
+                        </div>
+
+                        <!-- Groq Settings Group -->
+                        <div id="group-groq-settings" class="hidden">
+                            <div class="form-group">
+                                <label for="cfg-groq-api-key">Groq API Key</label>
+                                <input type="password" id="cfg-groq-api-key" placeholder="gsk_...">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-groq-model">Model Groq</label>
+                                <input type="text" id="cfg-groq-model" placeholder="llama-3.3-70b-versatile">
+                                <small>Contoh: <code>llama-3.3-70b-versatile</code>, <code>deepseek-r1-distill-llama-70b</code></small>
+                            </div>
+                        </div>
+
+                        <!-- DeepSeek Settings Group -->
+                        <div id="group-deepseek-settings" class="hidden">
+                            <div class="form-group">
+                                <label for="cfg-deepseek-api-key">DeepSeek API Key</label>
+                                <input type="password" id="cfg-deepseek-api-key" placeholder="sk-...">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-deepseek-model">Model DeepSeek</label>
+                                <input type="text" id="cfg-deepseek-model" placeholder="deepseek-chat">
+                                <small>Pilihan: <code>deepseek-chat</code> (V3), <code>deepseek-reasoner</code> (R1)</small>
+                            </div>
+                        </div>
+
+                        <!-- Qwen Settings Group -->
+                        <div id="group-qwen-settings" class="hidden">
+                            <div class="form-group">
+                                <label for="cfg-qwen-api-key">Alibaba DashScope (Qwen) API Key</label>
+                                <input type="password" id="cfg-qwen-api-key" placeholder="sk-...">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-qwen-model">Model Qwen</label>
+                                <input type="text" id="cfg-qwen-model" placeholder="qwen-plus">
+                                <small>Contoh: <code>qwen-plus</code>, <code>qwen-max</code>, <code>qwen-turbo</code></small>
+                            </div>
+                        </div>
+
+                        <!-- OpenRouter Settings Group -->
+                        <div id="group-openrouter-settings" class="hidden">
+                            <div class="form-group">
+                                <label for="cfg-openrouter-api-key">OpenRouter API Key</label>
+                                <input type="password" id="cfg-openrouter-api-key" placeholder="sk-or-...">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-openrouter-model">Model OpenRouter</label>
+                                <input type="text" id="cfg-openrouter-model" placeholder="meta-llama/llama-3.3-70b-instruct">
+                                <small>Contoh: <code>meta-llama/llama-3.3-70b-instruct</code>, <code>qwen/qwen-2.5-72b-instruct</code></small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cfg-max-tokens">Batas Maksimal Token</label>
+                            <input type="number" id="cfg-max-tokens" required min="100" max="4000" placeholder="1000">
+                            <small>Meningkatkan kuota token membantu model reasoning merampungkan jawaban.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cfg-sheets-url">URL Google Sheets (Apps Script Web App)</label>
+                            <input type="text" id="cfg-sheets-url" placeholder="https://script.google.com/macros/s/.../exec">
+                            <small>Masukkan URL Web App hasil deployment Google Apps Script di Spreadsheet Anda.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cfg-system-prompt">Template Prompt Sistem (Asisten Pribadi)</label>
+                            <textarea id="cfg-system-prompt" rows="8" placeholder="Template Prompt Sistem..."></textarea>
+                            <small>Penting: Wajib menyertakan placeholder <code>{KNOWLEDGE_BASE_CONTENT}</code> di bagian akhir agar bot dapat memproses dokumen basis pengetahuan.</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block">Simpan Konfigurasi</button>
+                    </form>
+                </section>
+            </main>
+        </div>
+
+        <!-- Bottom Tab Bar (iOS style) -->
+        <nav class="ios-tab-bar">
+            <button id="btn-tab-monitor" class="ios-tab-btn active" onclick="switchTab('monitor')">
+                <i data-lucide="message-square"></i>
+                <span>Chats</span>
+            </button>
+            <button id="btn-tab-memory" class="ios-tab-btn" onclick="switchTab('memory')">
+                <i data-lucide="database"></i>
+                <span>Memory</span>
+            </button>
+            <button id="btn-tab-settings" class="ios-tab-btn" onclick="switchTab('settings')">
+                <i data-lucide="settings"></i>
+                <span>Settings</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <script src="client.js?v=3"></script>
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
