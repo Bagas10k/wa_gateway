@@ -409,21 +409,38 @@ app.post('/api/whatsapp/restart', async (req, res) => {
 });
 
 // Setup WhatsApp Client dengan Puppeteer Arguments untuk stabilitas RAM
+const puppeteerOptions = {
+    handleSIGINT: false,
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-extensions'
+    ]
+};
+
+// Deteksi otomatis jika berjalan di Android (Termux)
+if (process.platform === 'android') {
+    const termuxChromiumPath = '/data/data/com.termux/files/usr/bin/chromium';
+    if (fs.existsSync(termuxChromiumPath)) {
+        puppeteerOptions.executablePath = termuxChromiumPath;
+        console.log(`[WhatsApp] Terdeteksi berjalan di Termux. Menggunakan chromium: ${termuxChromiumPath}`);
+    } else {
+        console.warn(`[WhatsApp] Peringatan: Berjalan di Termux tetapi chromium tidak ditemukan di ${termuxChromiumPath}. Pastikan Anda sudah menjalankan 'pkg install chromium'.`);
+    }
+} else if (config.puppeteer_executable_path && config.puppeteer_executable_path.trim() !== '') {
+    // Kustom path dari config.json (jika di-set secara manual)
+    puppeteerOptions.executablePath = config.puppeteer_executable_path.trim();
+    console.log(`[WhatsApp] Menggunakan custom puppeteer executablePath: ${puppeteerOptions.executablePath}`);
+}
+
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './session' }),
-    puppeteer: {
-        handleSIGINT: false,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--disable-extensions'
-        ]
-    }
+    puppeteer: puppeteerOptions
 });
 
 // State Management
